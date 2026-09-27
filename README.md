@@ -12,15 +12,23 @@ Start with a directory.
 
 ```bash
 convergence init
+```
+
 ### The five-minute version
 
 Create `.convergence/`:
+
+```
 .convergence/
 ├── README.md
 ├── rules/
 ├── transitions.jsonl
 └── evidence/
+```
+
 Write one rule:
+
+```json
 {
   "id": "api.user-id-format",
   "version": 1,
@@ -29,10 +37,14 @@ Write one rule:
   "oracle": null,
   "evidence_reference": "tests/test_user_ids.py"
 }
+```
+
 Record its approval:
+
+```json
 {"event":"RULE_RECORDED","rule_id":"api.user-id-format","rule_version":1,"approval_reference":"PR-381"}
 {"event":"RULE_ACTIVE","rule_id":"api.user-id-format","rule_version":1}
-Commit it.
+```
 
 That's it. Your project now has one piece of authoritative knowledge, in a place that Git, humans, agents, and CI can all read.
 
@@ -49,6 +61,8 @@ This is enforced by the file contract: ACTIVE rules require an approval referenc
 Authority and mechanization are orthogonal.
 
 ### The lifecycle
+
+```
 OBSERVATION
      ↓
   DISCOVER
@@ -67,6 +81,8 @@ OBSERVATION
   UNRESOLVED             │
                          ↓
                  ACTIVE / REVISED / RETIRED
+```
+
 Rules are content. Lifecycle is derived from append-only transitions. Nothing mutates in place.
 
 `UNRESOLVED` is a valid outcome. The system prefers admitting it does not know over silently manufacturing certainty.
@@ -106,14 +122,22 @@ The initial proof of concept was tested against Click framework semantics.
 A previously unknown option-binding behavior produced an UNRESOLVED WorkUnit.
 
 Investigation established a narrow candidate rule. After human authorization, it became:
-click.option.callback_keyword_binding@1
+
+`click.option.callback_keyword_binding@1`
+
 The rule was compiled and mechanized. The previously unresolved WorkUnit became PROVEN. A same-class WorkUnit became PROVEN. A deliberately incorrect binding became VIOLATED.
 
 Later, a real counterexample appeared:
+
+```python
 @click.option("--value", expose_value=False)
+```
+
 Version 1 incorrectly claimed that case. Execution challenged the project's existing knowledge rather than treating the artifact as a worker failure.
 
 The rule became SUSPECT. After review, its scope was narrowed and version 2 became ACTIVE:
+
+```
 click.option.callback_keyword_binding@1
               ACTIVE
                  │
@@ -131,6 +155,8 @@ click.option.callback_keyword_binding@1
                  ↓
 click.option.callback_keyword_binding@2
               ACTIVE
+```
+
 The original valid WorkUnits remained proven. The negative control remained violated. The newly excluded behavior became UNRESOLVED rather than falsely proven — and routed back to DISCOVER.
 
 That is the property being demonstrated:
@@ -148,6 +174,8 @@ Not a replacement for Git, CI, AGENTS.md, or design docs.
 Not a requirement to use any particular software factory.
 
 ### Integrate whatever you already use
+
+```
 Claude Code ─┐
 Codex ───────┤
 Cursor ──────┤
@@ -156,9 +184,13 @@ CI ──────────┤
 pytest ──────┤
 Ripwire ─────┤
 anything ────┘
+```
+
 Agreement is on the artifact, not the tooling.
 
 ### The file contract
+
+```
 .convergence/
 ├── README.md
 ├── rules/
@@ -168,6 +200,8 @@ Agreement is on the artifact, not the tooling.
     ├── executions.jsonl
     ├── discover_candidates.jsonl
     └── revalidate_candidates.jsonl
+```
+
 Rules hold claim content. They do not hold authority state.
 Transitions hold lifecycle events. Current state is derived by folding them.
 Evidence holds append-only execution records and unresolved candidates.
@@ -190,6 +224,8 @@ The full specification is in `docs/file-layout.md`.
 LLM economics are dominated by repeated reasoning.
 
 Without accumulated project semantics:
+
+```
 worker encounters problem
         ↓
 reason about framework
@@ -203,7 +239,11 @@ maybe solve it
 conversation ends
         ↓
 next worker starts again
+```
+
 With Convergence:
+
+```
 expensive discovery once
         ↓
 stabilize
@@ -213,6 +253,8 @@ authorize
 mechanize
         ↓
 cheap application N times
+```
+
 Frontier intelligence pays the discovery cost once. Humans decide what becomes trusted. Infrastructure pays the application cost thereafter.
 
 ### This will make your rules survive you
@@ -222,7 +264,11 @@ With two, it is a place to disagree about them.
 With ten, it is a place where the project, not any individual conversation, is the persistent unit of understanding.
 
 You don't need any of that today. You just need a directory.
+
+```bash
 convergence init
+```
+
 ### Status
 
 Convergence is currently an experimental protocol derived from a narrow Click proof of concept.

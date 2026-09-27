@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "convergence"
+version = "0.1.0"
+description = "Approval-gated claims that outlive the conversation."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+convergence = "convergence.cli:main"
+
+[tool.setuptools]
+packages = ["convergence"]
