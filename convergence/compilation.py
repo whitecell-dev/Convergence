@@ -1,55 +1,22 @@
-"""Lower approved claims onto the saved, immutable Click structural fixture."""
+"""Package approved rules with supplied structural evidence for consumers."""
 
 import copy
 
 
 def compile_rules(rule_set: list[dict], structural_fixture: dict) -> dict:
-    """The Click experiment's WR delta leaves the fixture's legacy fields intact."""
+    """Preserve structural evidence and include only active approved rules."""
     if any(
-        rule["state"] == "ACTIVE" and not rule.get("approval_reference")
+        rule["authority_state"] == "ACTIVE" and not rule.get("approval_reference")
         for rule in rule_set
     ):
         raise ValueError("active rule lacks human approval reference")
-    bundle = copy.deepcopy(structural_fixture)
     active = sorted(
-        (rule for rule in rule_set if rule["state"] == "ACTIVE"),
+        (copy.deepcopy(rule) for rule in rule_set if rule["authority_state"] == "ACTIVE"),
         key=lambda rule: (rule["id"], rule["version"]),
     )
-    bundle["WR"] = [
-        {
-            "id": rule["id"],
-            "version": rule["version"],
-            "applies_when": rule["scope"],
-            "constraint": {**rule["constraint"], "excludes": rule["exclusions"]},
-            "instruction": rule["instruction"],
-            "oracle": rule["oracle"],
-        }
-        for rule in active
-    ]
-    bundle["oracle_specs"] = [
-        {
-            "id": rule["id"],
-            "version": rule["version"],
-            "oracle": rule["oracle"],
-            "scope": rule["scope"],
-            "exclusions": rule["exclusions"],
-        }
-        for rule in active
-    ]
-    bundle["generator_constraints"] = [
-        {
-            "id": rule["id"],
-            "version": rule["version"],
-            "constraint": rule["constraint"],
-            "scope": rule["scope"],
-            "exclusions": rule["exclusions"],
-            "instruction": rule["instruction"],
-        }
-        for rule in active
-    ]
-    return bundle
+    return {"structural_ir": copy.deepcopy(structural_fixture), "rules": active}
 
 
-def parity(bundle: dict, structural_fixture: dict) -> dict[str, bool]:
-    """Compare every saved legacy field; WR is an authorized post-fixture delta."""
-    return {key: bundle.get(key) == value for key, value in structural_fixture.items()}
+def parity(bundle: dict, structural_fixture: dict) -> bool:
+    """Check that rule compilation preserved the supplied structural evidence."""
+    return bundle["structural_ir"] == structural_fixture

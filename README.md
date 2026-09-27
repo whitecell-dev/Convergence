@@ -1,587 +1,195 @@
 # Convergence
 
-**The protocol by which distributed learning becomes shared project knowledge.**
+**A place for your project to record what it has decided it can rely on.**
 
-Modern software projects no longer have one coherent author.
+Projects accumulate rules. They end up in tests, docs, prompts, comments, Slack threads, and people's heads.
 
-They have engineers using different models, coding agents running independently, CI systems, runtime telemetry, static analyzers, documentation, issue trackers, and humans carrying context that may never have been written down.
+Convergence gives those rules a small, Git-native home with scope, evidence, approval, versioning, and lifecycle.
 
-Those participants are allowed to disagree.
+No server. No account. No database. No required agent. No required workflow.
 
-**The project can't.**
+Start with a directory.
 
-Convergence is a small protocol for deciding how observations become knowledge a project is allowed to rely on—and how that knowledge is challenged, revised, and eventually retired.
+```bash
+convergence init
+### The five-minute version
 
-It is not an agent framework. It does not require a particular model, IDE, retrieval system, or execution harness.
-
-It provides a shared answer to one question:
-
-> **What is this project currently allowed to rely on, and why?**
-
----
-
-## The problem
-
-Git tells us **what changed**.
-
-CI tells us **whether a check passed**.
-
-RAG tells an agent **what information it can retrieve**.
-
-`AGENTS.md`, `CLAUDE.md`, documentation, and engineering notes tell agents **what someone wrote down**.
-
-None of those establish that a claim is currently authoritative.
-
-This becomes increasingly painful as more humans and agents work on the same project.
-
-```text
-Engineer A + Claude ──────┐
-Engineer B + Codex ───────┤
-Engineer C + Cursor ──────┤
-CI ───────────────────────┤
-Runtime observations ─────┤
-Static analysis ──────────┤
-                          ▼
-                    ??? shared truth
-```
-
-Each participant can develop a locally reasonable understanding of the system while the project as a whole quietly diverges.
-
-More context does not solve this.
-
-Better retrieval does not solve this.
-
-Making every worker use the same model does not solve this.
-
-The missing primitive is a protocol for **convergence**.
-
----
-
-## The principle
-
-Convergence separates **evidence** from **authority**.
-
-An agent discovering something does not make it true.
-
-A document containing something does not make it true.
-
-A test passing once does not make it universally true.
-
-A model confidently proposing a rule does not make that rule authoritative.
-
-Knowledge instead moves through explicit states:
-
-```text
-OBSERVATION
-    │
-    ▼
-CANDIDATE
-    │
-    ▼
-EVIDENCE
-    │
-    ▼
-STABILIZED
-    │
-    │ human authority
-    ▼
-ACTIVE
-    │
-    ├───────────────► applied mechanically
-    │
-    │ counterevidence
-    ▼
-SUSPECT
-    │
-    ├──► REVISED ──► ACTIVE @ next version
-    │
-    └──► RETIRED
-```
-
-`UNRESOLVED` is a valid result.
-
-The system should prefer admitting that it does not know over silently manufacturing certainty.
-
----
-
-# The knowledge lifecycle
-
-Convergence operates as two connected loops.
-
-## Slow loop: learn
-
-### 1. Discover
-
-Real work encounters something the project does not understand.
-
-A frontier model, developer, runtime probe, static analyzer, or other investigative tool can establish evidence.
-
-The important artifact is not an answer.
-
-It is a **candidate claim with evidence**.
-
-### 2. Capture
-
-Record what happened:
-
-- observation
-- suspected cause
-- failed approaches
-- successful probes
-- counterexamples
-- evidence
-- unresolved questions
-
-This is useful knowledge, but it is not authoritative knowledge.
-
-### 3. Stabilize
-
-Test whether the observation survives beyond the motivating example.
-
-Use additional WorkUnits, runtime probes, negative controls, source inspection, or independent validation.
-
-A repeated observation can become a candidate rule.
-
-It still has no authority.
-
-### 4. Authorize
-
-This is the boundary.
-
-A human reviews the evidence and determines the exact claim the project is willing to rely upon.
-
-The result should have at least:
-
-```text
-id
-version
-scope
-exclusions
-constraint
-oracle
-approval reference
-state
-```
-
-Probabilistic systems may propose changes to authority.
-
-They do not acquire authority merely by proposing them.
-
-### 5. Graduate
-
-The authorized claim enters the project's canonical semantic representation.
-
-For example:
-
-```json
+Create `.convergence/`:
+.convergence/
+├── README.md
+├── rules/
+├── transitions.jsonl
+└── evidence/
+Write one rule:
 {
-  "id": "click.option.callback_keyword_binding",
-  "version": 2,
-  "state": "ACTIVE",
-  "scope": {
-    "framework": "click",
-    "primitive": "option",
-    "operation": "generate"
-  },
-  "exclusions": [
-    "expose_value=false"
-  ],
-  "oracle": "click_validator:option.callback_keyword_binding"
+  "id": "api.user-id-format",
+  "version": 1,
+  "scope": {"paths": ["src/api/"]},
+  "constraint": "User IDs are UUIDv7.",
+  "oracle": null,
+  "evidence_reference": "tests/test_user_ids.py"
 }
-```
+Record its approval:
+{"event":"RULE_RECORDED","rule_id":"api.user-id-format","rule_version":1,"approval_reference":"PR-381"}
+{"event":"RULE_ACTIVE","rule_id":"api.user-id-format","rule_version":1}
+Commit it.
 
-The rule can now be compiled, resolved, distributed, and referenced mechanically.
+That's it. Your project now has one piece of authoritative knowledge, in a place that Git, humans, agents, and CI can all read.
 
-### 6. Mechanize
+### The distinction that matters
 
-Turn semantics into infrastructure.
+*Evidence is not authority.*
 
-Depending on the claim, that might mean:
+Something observed by a developer, agent, test, runtime probe, or external tool can inform a project decision. It does not silently become one.
 
-- static validation
-- AST checks
-- runtime probes
-- generated tests
-- scaffold constraints
-- deterministic transforms
-- correct-by-construction generation
+Convergence records the transition from something we observed to something the project has explicitly decided it may rely on.
 
-The goal is simple:
+This is enforced by the file contract: ACTIVE rules require an approval reference. An oracle may legitimately be null — a rule can be authoritative before it is mechanically checkable.
 
-> **Stop requiring workers to remember things the environment can enforce.**
+Authority and mechanization are orthogonal.
 
----
+### The lifecycle
+OBSERVATION
+     ↓
+  DISCOVER
+     ↓
+ CANDIDATE
+     ↓
+   human
+ authority
+     ↓
+   ACTIVE ──────────────┐
+     │                   │
+     │ execution         │ counterevidence
+     ↓                   ↓
+  PROVEN              SUSPECT
+  VIOLATED               │
+  UNRESOLVED             │
+                         ↓
+                 ACTIVE / REVISED / RETIRED
+Rules are content. Lifecycle is derived from append-only transitions. Nothing mutates in place.
 
-# Fast loop: execute
+`UNRESOLVED` is a valid outcome. The system prefers admitting it does not know over silently manufacturing certainty.
 
-Once knowledge has graduated, ordinary work should be boring.
+### No dependency required
 
-```text
-WorkUnit
-   │
-   ▼
-Resolve applicable semantics
-   │
-   ▼
-Construct bounded environment
-   │
-   ▼
-Execute worker
-   │
-   ▼
-Run oracle
-   │
-   ├── PROVEN ─────► continue
-   │
-   ├── VIOLATED ───► reject/correct
-   │
-   └── UNRESOLVED
-            │
-            ├── missing knowledge ──► DISCOVER
-            │
-            └── trusted rule failed ► REVALIDATE
-```
+Convergence is a file protocol first.
 
-The fast loop executes.
+You do not need our CLI, our agents, Ripwire, Compound Engineering, MCP, or a particular LLM.
 
-The slow loop learns.
+Create `.convergence/`, follow the file contract, and commit it to Git.
 
-Execution continuously supplies evidence back to the knowledge lifecycle.
+The reference implementation exists to make that easier and to mechanically check the protocol. It is optional.
 
----
+### Why this becomes useful
 
-# Reconvergence
+With one developer, Convergence is a place for rules.
 
-Authoritative does not mean permanently correct.
+With a team, it becomes something else.
 
-Reality changes.
+Git tells everyone what changed.
+Tests tell everyone whether something passes.
+Documentation tells everyone what someone wrote down.
 
-Dependencies change. Frameworks change. Code changes. New edge cases appear. Old assumptions stop holding.
+Convergence gives them a shared answer to a different question:
 
-When execution produces counterevidence against an ACTIVE rule, Convergence does not silently ignore the evidence or immediately let an agent rewrite the rule.
+> What has this project currently decided it can rely on?
 
-It marks the claim for revalidation:
+Each participant — human or agent — can develop locally reasonable beliefs. Those beliefs are allowed to diverge. The project's authoritative knowledge is not.
 
-```text
-ACTIVE @1
-    │
-    │ counterevidence
-    ▼
-SUSPECT
-    │
-    ▼
-REVALIDATE
-    │
-    │ human decision
-    ▼
-REVISED
-    │
-    ▼
-ACTIVE @2
-```
+*Agents may diverge. Projects must converge.*
 
-Historical evidence remains attached to the version that produced it.
+### A worked example: Click
 
-This makes project knowledge **revisable without becoming arbitrary**.
+The initial proof of concept was tested against Click framework semantics.
 
----
-
-# Why this is not RAG
-
-RAG answers:
-
-> What relevant information can I retrieve?
-
-Convergence answers:
-
-> What information is this project currently allowed to rely upon?
-
-These are complementary.
-
-A discovery agent might use RAG to find an old engineering note. But retrieving the note does not grant it authority.
-
-```text
-RAG
-"What have we said about this?"
-
-Convergence
-"What have we established about this?"
-```
-
-RAG is useful throughout investigation.
-
-Graduated semantics should eventually stop being merely retrieved and become mechanically applicable.
-
----
-
-# Why this is not `AGENTS.md`
-
-Agent instruction files are excellent for communicating conventions.
-
-They are still text.
-
-They generally cannot distinguish:
-
-```text
-hypothesis
-observation
-old convention
-current rule
-challenged rule
-retired rule
-```
-
-And an agent can misunderstand or ignore them.
-
-Convergence adds lifecycle, scope, evidence, versioning, and enforcement.
-
-`AGENTS.md` can be a consumer or projection of Convergence.
-
-It is not the authority mechanism itself.
-
----
-
-# Why this is not Git
-
-Git provides an authoritative history of **bytes**.
-
-Convergence provides an authoritative history of **claims**.
-
-Git can tell you:
-
-```text
-rule changed from v1 → v2
-```
-
-Convergence records why:
-
-```text
-v1
- │
- │ runtime counterexample
- ▼
-SUSPECT
- │
- │ evidence + human decision
- ▼
-v2
-```
-
-Convergence should use Git rather than replace it.
-
----
-
-# Why this is not CI/CD
-
-CI is an enforcement mechanism.
-
-That makes it an excellent consumer of Convergence.
-
-But CI usually knows:
-
-```text
-PASS
-FAIL
-```
-
-Convergence needs another state:
-
-```text
-UNRESOLVED
-```
-
-Those outcomes mean different things.
-
-A violation says:
-
-> We know the rule, and this artifact violated it.
-
-An unresolved result says:
-
-> We do not currently possess sufficient authoritative semantics to prove this artifact.
-
-The first is an execution problem.
-
-The second is a learning event.
-
-Collapsing them loses information.
-
----
-
-# Heterogeneous agents are expected
-
-Convergence does not require every engineer to use the same tools.
-
-One team might have:
-
-```text
-Claude
-Codex
-Cursor
-pytest
-GitHub Actions
-Jira
-```
-
-Another might have:
-
-```text
-local model
-Ripwire
-Compound Engineering
-custom validators
-MCP
-```
-
-Both can use the same protocol.
-
-Workers may differ in intelligence, provider, context window, prompting strategy, or implementation.
-
-They don't need identical internal beliefs.
-
-They need a shared mechanism for determining what the **project** relies upon.
-
-> **Agents may diverge. Projects must converge.**
-
----
-
-# Reference architecture
-
-Convergence itself should remain small.
-
-```text
-                 ┌──────────────────────┐
-                 │     CONVERGENCE      │
-                 │                      │
-                 │ claims + versions    │
-                 │ applicability        │
-                 │ compilation          │
-                 │ evidence             │
-                 │ routing              │
-                 └──────────┬───────────┘
-                            │
-          ┌─────────────────┼─────────────────┐
-          ▼                 ▼                 ▼
-      Validator         Generator            MCP
-          │                 │                 │
-          ▼                 ▼                 ▼
-      CI / Agent        Scaffold         Any worker
-```
-
-A minimal implementation needs five responsibilities:
-
-1. **Represent** authoritative claims and their lifecycle.
-2. **Resolve** which claims apply to a WorkUnit.
-3. **Compile** authoritative claims into consumer-friendly representations.
-4. **Record** execution evidence without rewriting history.
-5. **Route** missing knowledge and counterevidence back into the appropriate learning loop.
-
-Everything else can be integrated.
-
----
-
-# Reference software factory
-
-Convergence came out of a more opinionated software-factory architecture.
-
-That reference implementation uses tools such as:
-
-```text
-Frontier intelligence
-        +
-     Ripwire
-        │
-        ▼
-     Discover
-        │
-        ▼
-Compound Engineering
-        │
-        ▼
-    Stabilize
-        │
-        ▼
-   CONVERGENCE
-        │
-        ▼
-MCP / compiled semantics
-        │
-        ▼
-Scaffolds + bounded workers
-        │
-        ▼
-Deterministic oracles
-        │
-        └──────── evidence ───────► Convergence
-```
-
-Those dependencies are not requirements of the protocol.
-
-They demonstrate what happens when the loop is wired all the way through.
-
----
-
-# Click proof of concept
-
-The initial implementation was tested against Click framework semantics.
-
-A previously unknown option-binding behavior produced an `UNRESOLVED` WorkUnit.
+A previously unknown option-binding behavior produced an UNRESOLVED WorkUnit.
 
 Investigation established a narrow candidate rule. After human authorization, it became:
-
-```text
 click.option.callback_keyword_binding@1
-```
-
-The rule was compiled and mechanized.
-
-The previously unresolved WorkUnit became `PROVEN`, another same-class WorkUnit became `PROVEN`, and a deliberately incorrect binding became `VIOLATED`.
+The rule was compiled and mechanized. The previously unresolved WorkUnit became PROVEN. A same-class WorkUnit became PROVEN. A deliberately incorrect binding became VIOLATED.
 
 Later, a real counterexample appeared:
-
-```python
 @click.option("--value", expose_value=False)
-```
+Version 1 incorrectly claimed that case. Execution challenged the project's existing knowledge rather than treating the artifact as a worker failure.
 
-Version 1 incorrectly claimed that case.
-
-Execution therefore challenged the project's existing knowledge rather than treating the artifact as an ordinary worker failure.
-
-The rule became `SUSPECT`.
-
-After review, its scope was narrowed and version 2 became ACTIVE:
-
-```text
+The rule became SUSPECT. After review, its scope was narrowed and version 2 became ACTIVE:
 click.option.callback_keyword_binding@1
-               │
+              ACTIVE
+                 │
+        expose_value=False
           counterexample
-               ▼
-            SUSPECT
-               │
-             review
-               ▼
+                 │
+                 ↓
+              SUSPECT
+                 │
+           human review
+                 │
+                 ↓
+             REVISED
+                 │
+                 ↓
 click.option.callback_keyword_binding@2
-```
+              ACTIVE
+The original valid WorkUnits remained proven. The negative control remained violated. The newly excluded behavior became UNRESOLVED rather than falsely proven — and routed back to DISCOVER.
 
-The original valid WorkUnits remained proven.
+That is the property being demonstrated:
 
-The negative control remained violated.
+> The system can learn something, rely on it, discover that its understanding was too broad, and reconverge without silently rewriting history.
 
-The newly excluded behavior became unresolved rather than falsely proven.
+### What Convergence is not
 
-That is the intended property:
+Not a knowledge base.
+Not a test framework.
+Not a linter.
+Not an agent framework.
+Not an MCP server.
+Not a replacement for Git, CI, AGENTS.md, or design docs.
+Not a requirement to use any particular software factory.
 
-> **The system can learn something, rely on it, discover that its understanding was too broad, and reconverge without silently rewriting history.**
+### Integrate whatever you already use
+Claude Code ─┐
+Codex ───────┤
+Cursor ──────┤
+Humans ──────┤── .convergence/ ── Git
+CI ──────────┤
+pytest ──────┤
+Ripwire ─────┤
+anything ────┘
+Agreement is on the artifact, not the tooling.
 
----
+### The file contract
+.convergence/
+├── README.md
+├── rules/
+│   └── <rule-id>.json
+├── transitions.jsonl
+└── evidence/
+    ├── executions.jsonl
+    ├── discover_candidates.jsonl
+    └── revalidate_candidates.jsonl
+Rules hold claim content. They do not hold authority state.
+Transitions hold lifecycle events. Current state is derived by folding them.
+Evidence holds append-only execution records and unresolved candidates.
 
-# Why this matters for software factories
+The full specification is in `docs/file-layout.md`.
+
+### Design principles
+
+- Evidence is not authority.
+- Unknown is different from wrong.
+- Authority must be scoped and versioned.
+- Counterevidence must be able to challenge authority.
+- Historical evidence should remain attributable to the rule version that produced it.
+- Probabilistic intelligence may propose authority changes; it should not silently grant itself authority.
+- Once knowledge can be mechanized, stop spending model intelligence rediscovering it.
+- Integrate commodity infrastructure. Own only the semantics introduced by probabilistic work.
+
+### Why this matters for software factories
 
 LLM economics are dominated by repeated reasoning.
 
 Without accumulated project semantics:
-
-```text
 worker encounters problem
         ↓
 reason about framework
@@ -595,11 +203,7 @@ maybe solve it
 conversation ends
         ↓
 next worker starts again
-```
-
-Convergence lets that become:
-
-```text
+With Convergence:
 expensive discovery once
         ↓
 stabilize
@@ -609,94 +213,26 @@ authorize
 mechanize
         ↓
 cheap application N times
-```
+Frontier intelligence pays the discovery cost once. Humans decide what becomes trusted. Infrastructure pays the application cost thereafter.
 
-Frontier intelligence pays the discovery cost once.
+### This will make your rules survive you
 
-Humans decide what becomes trusted.
+With one developer, Convergence is a place for rules.
+With two, it is a place to disagree about them.
+With ten, it is a place where the project, not any individual conversation, is the persistent unit of understanding.
 
-Infrastructure pays the application cost thereafter.
-
-That allows smaller models to operate successfully because increasingly little intelligence is required at execution time.
-
-The environment has already learned.
-
----
-
-# Why this matters for teams
-
-The larger goal is not merely better autonomous coding.
-
-It is making human-agent collaboration scale beyond:
-
-```text
-one engineer
-+
-their preferred agent
-+
-their private context
-```
-
-A project with ten engineers and twenty agents should not require thirty synchronized conversations.
-
-Instead, each participant can independently contribute observations while sharing the same authoritative project state.
-
-```text
-distributed observation
-        ↓
-       evidence
-        ↓
-    convergence
-        ↓
-shared semantics
-        ↓
-mechanization
-        ↓
-distributed execution
-```
-
-The project becomes the persistent unit of understanding rather than any individual conversation.
-
----
-
-# Design principles
-
-**Evidence is not authority.**
-
-**Unknown is different from wrong.**
-
-**Authority must be scoped and versioned.**
-
-**Counterevidence must be able to challenge authority.**
-
-**Historical evidence should remain attributable to the rule version that produced it.**
-
-**Probabilistic intelligence may propose authority changes; it should not silently grant itself authority.**
-
-**Once knowledge can be mechanized, stop spending model intelligence rediscovering it.**
-
-**Integrate commodity infrastructure. Own only the semantics introduced by probabilistic work.**
-
----
-
-# Status
+You don't need any of that today. You just need a directory.
+convergence init
+### Status
 
 Convergence is currently an experimental protocol derived from a narrow Click proof of concept.
 
-The current work demonstrates the basic learning and maintenance cycles, including human-gated graduation, versioning, execution evidence, applicability, `PROVEN / VIOLATED / UNRESOLVED` outcomes, counterevidence, and reconvergence.
+The current work demonstrates the basic learning and maintenance cycles, including human-gated graduation, versioning, execution evidence, applicability, PROVEN / VIOLATED / UNRESOLVED outcomes, counterevidence, and reconvergence.
 
-It does **not** establish a general solution for arbitrary frameworks or unattended semantic maintenance.
+It does not establish a general solution for arbitrary frameworks or unattended semantic maintenance.
 
 That's intentional.
 
-The immediate goal is to make the smallest useful convergence protocol work end-to-end before expanding the surface area.
+### The idea in one sentence
 
----
-
-## The idea in one sentence
-
-> **Convergence is the protocol by which distributed learning becomes shared, versioned, mechanically enforceable project knowledge.**
-
-Agents are allowed to diverge.
-
-**Projects need a way to converge.**
+> Convergence is the protocol by which distributed learning becomes shared, versioned, mechanically enforceable project knowledge.

@@ -7,11 +7,12 @@ import unittest
 from pathlib import Path
 
 from convergence.applicability import resolve
-from convergence.claims import AuthorityStore
+from convergence.claims import AuthorityStore, check_protocol_integrity
 from convergence.click_adapter import evaluate
 from convergence.compilation import compile_rules, parity
 from convergence.evidence import record_execution
 from convergence.routing import classify
+from integrations.ripwire import read_structural_ir
 
 
 ARCHIVE = Path(__file__).resolve().parents[2] / "Semantic-Extractor"
@@ -44,15 +45,25 @@ def rule_from_v1_diff() -> dict:
         "constraint": {k: v for k, v in raw["constraint"].items() if k != "excludes"},
         "instruction": raw["instruction"],
         "oracle": raw["oracle"],
-        "state": "ACTIVE",
+        "authority_state": "ACTIVE",
+        "evidence_reference": None,
+    }
+
+
+def authored_form(rule: dict) -> dict:
+    return {
+        "id": rule["id"],
+        "version": rule["version"],
+        "applies_when": rule["scope"],
+        "constraint": {**rule["constraint"], "excludes": rule["exclusions"]},
+        "instruction": rule["instruction"],
+        "oracle": rule["oracle"],
     }
 
 
 class ClickCycles(unittest.TestCase):
     def test_learning_then_maintenance_from_clean_state(self):
-        fixture = json.loads(
-            (ARCHIVE / "Python/IR-files/calyx_click_v6.json").read_text()
-        )
+        fixture = read_structural_ir(ARCHIVE / "Python/IR-files/calyx_click_v6.json")
         before = lines(EXPERIMENTS / "click-learning-cycle/before/executions.jsonl")[0]
         saved_discover = lines(
             EXPERIMENTS / "click-learning-cycle/before/discovery_candidates.jsonl"
@@ -86,20 +97,19 @@ class ClickCycles(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as scratch:
             state = Path(scratch)
-            store = AuthorityStore(state / "authority")
-            evidence = state / "evidence"
+            store = AuthorityStore(state / ".convergence")
+            evidence = store.root / "evidence"
 
             def run(name, rule, saved):
                 observation = evaluate(sources[name], rule)
                 record = record_execution(
-                    evidence,
+                    store.root,
                     name,
                     sources[name],
                     observation,
-                    authorized_rules=store.rules,
                     expected_hash=saved["artifact_sha256"],
                 )
-                routed = classify(record, evidence)
+                routed = classify(record, store.root)
                 self.assertEqual(record["outcome"].lower(), saved["outcome"])
                 return record, routed
 
@@ -107,7 +117,7 @@ class ClickCycles(unittest.TestCase):
             initial, candidate = run("unknown1", None, before)
             self.assertEqual(initial["outcome"], "UNRESOLVED")
             self.assertEqual(candidate["kind"], "DISCOVER")
-            self.assertEqual(len(lines(evidence / "discovery_candidates.jsonl")), 1)
+            self.assertEqual(len(lines(evidence / "discover_candidates.jsonl")), 1)
 
             v1 = rule_from_v1_diff()
             self.assertEqual(v1["version"], 1)
@@ -116,36 +126,29 @@ class ClickCycles(unittest.TestCase):
             approved_v1 = store.record_rule(
                 v1, str(EXPERIMENTS / "click-learning-cycle/authored-rule.diff")
             )
-            self.assertEqual(approved_v1["state"], "ACTIVE")
+            self.assertEqual(approved_v1["authority_state"], "ACTIVE")
             self.assertEqual(
-                len(resolve(store.rules, "click", "option", "generate")), 1
+                len(resolve(store.rules, {"framework": "click", "primitive": "option", "operation": "generate"})), 1
             )
-            self.assertEqual(resolve(store.rules, "click", "argument", "generate"), [])
+            self.assertEqual(resolve(store.rules, {"framework": "click", "primitive": "argument", "operation": "generate"}), [])
             bundle_v1 = compile_rules(store.rules, fixture)
-            self.assertTrue(all(parity(bundle_v1, fixture).values()))
-            self.assertEqual(bundle_v1["WR"][0], v1_from_diff())
-            self.assertEqual(bundle_v1["WR"][0]["version"], 1)
-            self.assertEqual(
-                bundle_v1["WR"][0]["constraint"]["excludes"], v1["exclusions"]
-            )
-            self.assertEqual(bundle_v1["oracle_specs"][0]["oracle"], v1["oracle"])
-            self.assertEqual(
-                bundle_v1["generator_constraints"][0]["exclusions"], v1["exclusions"]
-            )
+            self.assertTrue(parity(bundle_v1, fixture))
+            self.assertEqual(bundle_v1["rules"], [approved_v1])
+            self.assertEqual(authored_form(bundle_v1["rules"][0]), v1_from_diff())
             for name, outcome in (
                 ("unknown1", "PROVEN"),
                 ("same_class1", "PROVEN"),
                 ("negative1", "VIOLATED"),
             ):
-                record, _ = run(name, approved_v1, after[name])
+                record, _ = run(name, bundle_v1["rules"][0], after[name])
                 self.assertEqual(record["outcome"], outcome)
-            self.assertEqual(len(lines(evidence / "discovery_candidates.jsonl")), 1)
+            self.assertEqual(len(lines(evidence / "discover_candidates.jsonl")), 1)
 
             # Cycle B: the v1 claim applies, but the oracle cannot support it.
             challenge_saved = lines(
                 EXPERIMENTS / "click-maintenance/suspect/executions.jsonl"
             )[0]
-            challenged, suspect = run("challenge", approved_v1, challenge_saved)
+            challenged, suspect = run("challenge", bundle_v1["rules"][0], challenge_saved)
             self.assertEqual(
                 (
                     challenged["outcome"],
@@ -156,7 +159,9 @@ class ClickCycles(unittest.TestCase):
             )
             self.assertEqual(suspect["kind"], "REVALIDATE")
             self.assertEqual(suspect["state"], "SUSPECT")
-            self.assertEqual(len(lines(evidence / "revalidation_candidates.jsonl")), 1)
+            self.assertEqual(len(lines(evidence / "revalidate_candidates.jsonl")), 1)
+            store.reload()
+            self.assertEqual(store.state(v1["id"], 1), "SUSPECT")
 
             revision = (EXPERIMENTS / "click-maintenance/revision.diff").read_text()
             self.assertIn('+      "version": 2,', revision)
@@ -167,20 +172,21 @@ class ClickCycles(unittest.TestCase):
             approved_v2 = store.record_rule(
                 v2, str(EXPERIMENTS / "click-maintenance/revision.diff")
             )
-            self.assertEqual(approved_v2["state"], "ACTIVE")
-            self.assertEqual(store.rules[0]["state"], "RETIRED")
+            self.assertEqual(approved_v2["authority_state"], "ACTIVE")
+            self.assertEqual(store.state(v1["id"], 1), "RETIRED")
+            self.assertFalse(any(row["kind"] == "REVALIDATE" for row in store.status()["open_candidates"]))
+            self.assertEqual(classify(challenged, store.root), suspect)
             with self.assertRaises(ValueError):
                 record_execution(
-                    evidence,
+                    store.root,
                     "stale",
                     sources["unknown1"],
                     evaluate(sources["unknown1"], approved_v1),
-                    store.rules,
                 )
             self.assertEqual(
                 [
                     r["version"]
-                    for r in resolve(store.rules, "click", "option", "generate")
+                    for r in resolve(store.rules, {"framework": "click", "primitive": "option", "operation": "generate"})
                 ],
                 [2],
             )
@@ -190,26 +196,24 @@ class ClickCycles(unittest.TestCase):
                     / "Python/boilerplate-generator/semantic/tables/click/invariants.json"
                 ).read_text()
             )
-            self.assertEqual(
-                compile_rules(store.rules, fixture)["WR"][0],
-                authored["worker_rules"][2],
-            )
             bundle_v2 = compile_rules(store.rules, fixture)
-            self.assertTrue(all(parity(bundle_v2, fixture).values()))
+            self.assertTrue(parity(bundle_v2, fixture))
+            self.assertEqual(authored_form(bundle_v2["rules"][0]), authored["worker_rules"][2])
             for name, outcome in (
                 ("unknown1", "PROVEN"),
                 ("same_class1", "PROVEN"),
                 ("negative1", "VIOLATED"),
                 ("challenge", "UNRESOLVED"),
             ):
-                record, routed = run(name, approved_v2, post[name])
+                record, routed = run(name, bundle_v2["rules"][0], post[name])
                 self.assertEqual(record["outcome"], outcome)
                 if name == "challenge":
                     self.assertFalse(record["applicable"])
                     self.assertEqual(routed["kind"], "DISCOVER")
-            self.assertEqual(len(lines(evidence / "discovery_candidates.jsonl")), 2)
-            self.assertEqual(len(lines(evidence / "revalidation_candidates.jsonl")), 1)
+            self.assertEqual(len(lines(evidence / "discover_candidates.jsonl")), 2)
+            self.assertEqual(len(lines(evidence / "revalidate_candidates.jsonl")), 1)
             self.assertEqual(len(lines(evidence / "executions.jsonl")), 9)
+            self.assertEqual(check_protocol_integrity(store.root), [])
 
 
 if __name__ == "__main__":
