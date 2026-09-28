@@ -7,7 +7,7 @@ def resolve(rules: list[dict], query: dict, matcher=None) -> list[dict]:
             raise ValueError("default scope query must be an object")
         matcher = lambda scope, supplied: all(key in scope and scope[key] == value for key, value in supplied.items())
     if any(
-        rule["authority_state"] == "ACTIVE" and not rule.get("approval_reference")
+        rule["state"] == "ACTIVE" and not rule.get("approval_ref")
         for rule in rules
     ):
         raise ValueError("active rule lacks human approval reference")
@@ -15,7 +15,7 @@ def resolve(rules: list[dict], query: dict, matcher=None) -> list[dict]:
         (
             rule
             for rule in rules
-            if rule["authority_state"] == "ACTIVE" and matcher(rule["scope"], query)
+            if rule["state"] == "ACTIVE" and matcher(rule["scope"], query)
         ),
         key=lambda rule: (rule["id"], rule["version"]),
     )
