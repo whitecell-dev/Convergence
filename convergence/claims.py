@@ -136,15 +136,18 @@ def _fold(claims, transitions, errors):
             valid, state = previous in {"AUTHORIZED", "ACTIVE", "SUSPECT"}, "RETIRED"
         else:
             valid, state = previous == "CANDIDATE", "WITHDRAWN"
+        blocker = None
         if valid and state in {"AUTHORIZED", "ACTIVE", "SUSPECT"}:
-            valid = not any(
-                other_id == key[0] and other_version != key[1] and other_state in {"AUTHORIZED", "ACTIVE", "SUSPECT"}
-                for (other_id, other_version), other_state in states.items()
-            )
+            blocker = next(((other_id, other_version) for (other_id, other_version), other_state in states.items()
+                            if other_id == key[0] and other_version != key[1]
+                            and other_state in {"AUTHORIZED", "ACTIVE", "SUSPECT"}), None)
+            valid = blocker is None
         if valid:
             states[key] = state
         else:
-            errors.append(f"{label}: incoherent lifecycle transition")
+            reason = f"; {blocker[0]}@{blocker[1]} still holds authority" if blocker else ""
+            errors.append(f"{label}: incoherent lifecycle transition {kind} "
+                          f"{key[0]}@{key[1]} from {previous}{reason}")
     return states, approvals, pending
 
 

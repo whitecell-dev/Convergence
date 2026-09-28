@@ -34,7 +34,9 @@ class Integrity(unittest.TestCase):
             store.transition({"event": "ACTIVE", "id": "test", "version": 1})
             store.record_rule({"id": "test", "version": 2, "scope": {},
                                "claim": "Test is sometimes true.", "evidence_refs": ["git:abc:tests/test.py"]})
-            with self.assertRaisesRegex(ValueError, "incoherent lifecycle"):
+            with self.assertRaisesRegex(
+                    ValueError, r"incoherent lifecycle transition AUTHORIZED test@2 from CANDIDATE"
+                                 r"; test@1 still holds authority"):
                 store.transition({"event": "AUTHORIZED", "id": "test", "version": 2,
                                   "approval_ref": "PR-3"})
             store.transition({"event": "SUPERSEDED", "id": "test", "version": 1,
