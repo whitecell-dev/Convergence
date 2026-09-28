@@ -1,5 +1,9 @@
 # Convergence
 
+> **You are on the `experiment` branch.** This is the opinionated implementation: a software-factory loop with evidence ledgers, oracle compilation, routing, and a Click proof of concept. It is heavier than the protocol requires and is not the recommended starting point.
+>
+> For the narrow protocol — two required files, no dependencies, free to adopt — use [`main`](https://github.com/whitecell-dev/Convergence). The protocol is normative there; this branch is one implementation of it plus the machinery around it.
+
 **A place for your project to record what it has decided it can rely on.**
 
 Projects accumulate rules. They end up in tests, docs, prompts, comments, Slack threads, and people's heads.
