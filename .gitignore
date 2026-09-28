@@ -6,6 +6,9 @@ __pycache__/
 #Direction 
 ROADMAP.md
 
+# Generated LLM-optimized module bundle (belongs to the experiment branch)
+calyx_bundle.py
+
 # Windows NTFS alternate data streams (Zone.Identifier)
 *:Zone.Identifier
 
