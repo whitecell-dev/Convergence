@@ -49,3 +49,9 @@ convergence check
 The authoritative set comes from the repository's chosen Git ref, usually its protected default branch. Transitions are append-only within an accepted Git history. Git supplies integrity for committed bytes; Convergence adds authority semantics, not a second hash chain.
 
 The [protocol](docs/PROTOCOL.md) is normative. [Factory examples](examples/factory/) are optional.
+
+## Branches
+
+`main` is the narrow protocol and stands alone. Nothing above requires anything below it.
+
+The [`experiment`](https://github.com/whitecell-dev/Convergence/tree/experiment) branch holds an opinionated implementation of the same idea: a software-factory loop with evidence ledgers, oracle compilation, and a Click proof of concept. It is for readers who want that machinery. It is not required to adopt `main`, and the two are not kept in sync.
